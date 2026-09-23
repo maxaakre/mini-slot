@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#070a14" />
+    <title>Aurora Reels</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23ffd23a' d='M12 2l3 7h7l-5.5 4.5 2 7.5-6.5-4.5L5.5 21l2-7.5L2 9h7z'/></svg>" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Aurora Reels</h1>
+      <span id="session" class="session"></span>
+    </header>
+
+    <main id="stage" class="stage" aria-label="Slot reels"></main>
+
+    <div id="message" class="message" role="status" hidden></div>
+    <div id="announcer" class="visually-hidden" aria-live="polite"></div>
+
+    <footer class="hud">
+      <div class="stat">
+        <span class="label">Balance</span>
+        <span id="balance" class="value"></span>
+      </div>
+
+      <div class="stat bet">
+        <span class="label">Bet</span>
+        <div class="stepper">
+          <button id="bet-down" type="button" aria-label="Lower bet">−</button>
+          <span id="bet" class="value"></span>
+          <button id="bet-up" type="button" aria-label="Raise bet">+</button>
+        </div>
+      </div>
+
+      <button id="spin" class="spin" type="button" aria-label="Spin" data-mode="spin">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-spin"><path d="M12 4a8 8 0 1 1-7.4 5h2.2A6 6 0 1 0 12 6v3L8 5l4-4v3z" /></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-stop"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+      </button>
+
+      <div class="stat">
+        <span class="label">Win</span>
+        <span id="win" class="value win">–</span>
+      </div>
+
+      <div class="extras">
+        <label class="toggle">
+          <input id="turbo" type="checkbox" />
+          <span>Turbo</span>
+        </label>
+        <button id="buy" type="button" class="buy">Buy bonus <span class="cost"></span></button>
+      </div>
+    </footer>
+
+    <span id="seed" class="seed"></span>
+    <noscript>This game needs JavaScript.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
