@@ -50,13 +50,17 @@ export class Hud {
     this.turbo.checked = turboOn;
     this.turbo.addEventListener('change', () => callbacks.onTurboChange(this.turbo.checked));
 
-    // Space spins (and skips) from anywhere, like every slot.
-    window.addEventListener('keydown', (event) => {
-      if (event.code !== 'Space' || event.repeat) return;
-      if (event.target instanceof HTMLButtonElement || event.target instanceof HTMLInputElement) return;
+    // Space always means spin / stop, like every slot. It must never click
+    // whatever button has focus (e.g. Buy bonus after a mouse click).
+    // Capture phase + preventDefault on both key events blocks the native click.
+    const onSpace = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return;
       event.preventDefault();
-      callbacks.onSpin();
-    });
+      event.stopPropagation();
+      if (event.type === 'keydown' && !event.repeat) callbacks.onSpin();
+    };
+    window.addEventListener('keydown', onSpace, { capture: true });
+    window.addEventListener('keyup', onSpace, { capture: true });
   }
 
   setBalance(cents: number): void {

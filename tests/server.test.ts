@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BONUS_BUY_COST, FREE_SPINS } from '../src/math/config';
-import { playWithRetry } from '../src/server/client';
+import { createRequestId, playWithRetry } from '../src/server/client';
 import { MockServer, ServerError, type RoundRequest } from '../src/server/mockServer';
 
 let nextId = 0;
@@ -98,5 +98,18 @@ describe('playWithRetry', () => {
     };
     await expect(playWithRetry(api, req('spin'), { retries: 3, backoffMs: 0 })).rejects.toThrow();
     expect(calls).toBe(1);
+  });
+});
+
+describe('createRequestId', () => {
+  it('works without crypto.randomUUID (plain http on a LAN IP)', () => {
+    const original = crypto.randomUUID;
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      const ids = new Set(Array.from({ length: 1000 }, createRequestId));
+      expect(ids.size).toBe(1000);
+    } finally {
+      Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
+    }
   });
 });

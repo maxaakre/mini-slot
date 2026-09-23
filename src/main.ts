@@ -17,7 +17,9 @@ import './styles.css';
  *   ?seed=42      replay the exact same session
  *   ?fail=0.3     lose 30% of server responses (retries kick in)
  *   ?latency=800  slower server
+ *   ?balance=500  start balance in cents
  *   ?perf         show the perf overlay (or press P)
+ *   ?debug        expose window.__debug in production builds
  */
 const params = new URLSearchParams(location.search);
 const seed = Number(params.get('seed') ?? Math.floor(Math.random() * 1e9));
@@ -43,7 +45,7 @@ async function start(): Promise<void> {
 
   const server = new MockServer({
     seed,
-    balance: 100_000,
+    balance: Number(params.get('balance') ?? 100_000),
     latencyMs: Number(params.get('latency') ?? 250),
     failureRate: Number(params.get('fail') ?? 0),
   });
@@ -106,6 +108,11 @@ async function start(): Promise<void> {
   );
 
   document.getElementById('seed')!.textContent = `seed ${seed}`;
+
+  // Lets automated tests compare the HUD with the server's truth.
+  if (import.meta.env.DEV || params.has('debug')) {
+    Object.assign(window, { __debug: { server, controller } });
+  }
 }
 
 start().catch((error) => {

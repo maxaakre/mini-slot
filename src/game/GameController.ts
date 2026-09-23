@@ -186,7 +186,18 @@ export class GameController {
       'bonus',
     );
     const pause = intro ? 1500 : this.turbo ? FREE_SPIN_PAUSE_MS.turbo : FREE_SPIN_PAUSE_MS.normal;
-    this.deps.tweens.wait(pause).done.then(() => void this.playRound('freeSpin'));
+    this.deps.tweens.wait(pause).done.then(() => this.startFreeSpin());
+  }
+
+  private startFreeSpin(): void {
+    if (!this.freeSpins) return;
+    // Should always be idle here. If not, try again shortly rather than
+    // leaving the bonus stuck.
+    if (!this.fsm.can('SPIN')) {
+      this.deps.tweens.wait(200).done.then(() => this.startFreeSpin());
+      return;
+    }
+    void this.playRound('freeSpin');
   }
 
   private async request(type: RoundType): Promise<RoundResponse> {
@@ -232,8 +243,18 @@ export class GameController {
     });
   }
 
+  private renderOutOfBalance(): void {
+    if (this.fsm.state !== 'idle' || this.freeSpins) return;
+    if (this.balance < BET_LEVELS[0]!) {
+      this.deps.hud.showMessage('Out of balance · Reload the page to start over', 'error');
+    } else if (this.balance < this.bet) {
+      this.deps.hud.showMessage('Lower your bet to keep playing', 'info');
+    }
+  }
+
   private renderSession(): void {
     const minutes = Math.floor((Date.now() - this.sessionStart) / 60_000);
     this.deps.hud.setSession(minutes, this.balance - this.startBalance);
+    this.renderOutOfBalance();
   }
 }

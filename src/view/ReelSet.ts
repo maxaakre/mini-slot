@@ -3,7 +3,7 @@ import { REELS, ROWS, Sym, type ReelSet as Strips, type SymbolId } from '../math
 import type { Grid, Position } from '../math/engine';
 import { Reel } from './Reel';
 import { SYMBOL_SIZE } from './symbolTextures';
-import { ease, type Tweens } from './tween';
+import { ease, type TweenHandle, type Tweens } from './tween';
 
 export const REEL_GAP = 10;
 export const BOARD_WIDTH = REELS * SYMBOL_SIZE + (REELS - 1) * REEL_GAP;
@@ -16,6 +16,7 @@ export class ReelSet {
   readonly view = new Container();
   private readonly reels: Reel[];
   private readonly frame = new Graphics();
+  private pulses: TweenHandle[] = [];
 
   constructor(
     textures: Record<SymbolId, Texture>,
@@ -96,15 +97,20 @@ export class ReelSet {
     });
     for (const [reel, row] of positions) {
       const sprite = this.reels[reel]!.spriteAt(row);
-      this.tweens.add({
+      const pulse = this.tweens.add({
         duration: 700,
         ease: ease.linear,
         onUpdate: (t) => sprite.scale.set(1 + 0.12 * Math.sin(t * Math.PI)),
       });
+      this.pulses.push(pulse);
     }
   }
 
   clearHighlight(): void {
+    // Finish pulses first, so none keeps scaling a sprite into the next spin.
+    const pulses = this.pulses;
+    this.pulses = [];
+    for (const pulse of pulses) pulse.finish();
     this.forEachCell((sprite) => {
       sprite.alpha = 1;
       sprite.scale.set(1);

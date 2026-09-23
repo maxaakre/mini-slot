@@ -29,6 +29,16 @@ export async function playWithRetry(
   }
 }
 
+let fallbackCounter = 0;
+
+/**
+ * `crypto.randomUUID` only exists in secure contexts (https or localhost).
+ * Opening the dev server on a phone via a LAN IP is plain http, so fall back.
+ */
 export function createRequestId(): string {
-  return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  fallbackCounter++;
+  return `${Date.now().toString(36)}-${fallbackCounter.toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

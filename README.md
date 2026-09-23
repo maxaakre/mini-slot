@@ -9,7 +9,9 @@ RTP, robust round flow, and a renderer that stays smooth on mobile.
 ```bash
 npm install
 npm run dev        # play at http://localhost:5173
-npm test           # 31 unit tests
+npm run demo       # production build at http://localhost:4173
+npm run dev:phone  # expose on your LAN to play on a phone
+npm test           # unit tests
 npm run simulate   # 1M-spin RTP report
 npm run build      # typecheck + production build
 ```
@@ -23,7 +25,9 @@ npm run build      # typecheck + production build
 - **Slam stop** and **skip**: one button spins, stops and skips
 - **Turbo** mode, which is on by default with `prefers-reduced-motion`
 - Session timer and net result, always visible (responsible gambling)
-- Keyboard (Space) and screen-reader support through a DOM HUD
+- Keyboard and screen-reader support through a DOM HUD. Space always
+  spins or stops, even when another control has focus, and Enter activates
+  the focused control.
 
 ## Architecture
 
@@ -159,4 +163,5 @@ one place.
 | `?seed=42` | Replays the exact same session |
 | `?fail=0.3` | Loses 30% of server responses (retries kick in) |
 | `?latency=800` | Makes the server slower |
+| `?balance=500` | Sets the start balance in cents |
 | `?perf` | Shows the perf overlay (or press P) |
