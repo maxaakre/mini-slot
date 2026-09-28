@@ -56,14 +56,26 @@ tests use the exact same code as the game.
 
 ### Round flow
 
-```
- press ─▶ SPIN ─▶ reels start (instant feedback)
-                 └▶ request(requestId) ──▶ server settles bet + win
-                                            │
-          RESULT ◀── response ──────────────┘
-            └▶ reels land on the server's grid (staggered, with anticipation)
-          STOPPED ─▶ win presentation (lines, count-up, particles)
-          DONE ─▶ idle, or the next free spin
+```mermaid
+sequenceDiagram
+    actor Player
+    participant Game as GameController
+    participant Reels as ReelSet
+    participant Server as MockServer
+
+    Player->>Game: press spin
+    Note over Game: SPIN → spinning
+    Game->>Reels: start spinning (instant feedback)
+    Game->>Server: request(requestId)
+    Server-->>Server: settle bet + win
+    Server-->>Game: response (grid, wins, balance)
+    Note over Game: RESULT → stopping
+    Game->>Reels: land on the server's grid
+    Note over Reels: staggered, with anticipation
+    Reels-->>Game: all reels stopped
+    Note over Game: STOPPED → presenting
+    Game->>Game: win presentation (lines, count-up, particles)
+    Note over Game: DONE → idle, or the next free spin
 ```
 
 ## Math
