@@ -31,28 +31,35 @@ npm run build      # typecheck + production build
 
 ## Architecture
 
-```
-src/
-  math/     Pure game math. No DOM, no Pixi, no async.
-    rng.ts        Seeded PRNG behind an `Rng` interface
-    config.ts     Paytable, lines, reel strips, bonus rules
-    engine.ts     drawStops → grid → evaluate → SpinOutcome
-  server/   Owns money and outcomes.
-    mockServer.ts In-browser server: validation, balance, bonus state, idempotency
-    client.ts     Retry with backoff and the same request id
-  game/     Owns "what can happen now".
-    stateMachine.ts  idle → spinning → stopping → presenting → idle
-    GameController.ts  Sequences server, state machine and views
-  view/     Owns how it looks. Pixi only.
-    Reel.ts, ReelSet.ts, WinPresenter.ts, ParticlePool.ts, tween.ts
-  ui/       DOM HUD and perf overlay
-scripts/simulate.ts   Monte Carlo RTP report
-tests/                Math, server and state machine tests
+The code is split into five layers. **Dependencies point one way only**, from the view down to the math.
+
+```mermaid
+flowchart LR
+    subgraph present["Presentation"]
+        direction TB
+        view["<b>view/</b><br/>Pixi rendering"]
+        ui["<b>ui/</b><br/>DOM HUD"]
+    end
+
+    game["<b>game/</b><br/>What can happen now"]
+    server["<b>server/</b><br/>Money and outcomes"]
+    math["<b>math/</b><br/>Pure game math"]
+
+    present --> game --> server --> math
 ```
 
-**The dependency direction is one way:** `view` and `ui` → `game` → `server` → `math`.
 The math has no idea it runs in a browser. That is why the simulator and the
 tests use the exact same code as the game.
+
+| Layer | Owns | Key files |
+| --- | --- | --- |
+| **`math/`** | Pure game math. No DOM, no Pixi, no async. | `rng.ts` seeded PRNG behind an `Rng` interface<br/>`config.ts` paytable, lines, reel strips, bonus rules<br/>`engine.ts` drawStops → grid → evaluate → `SpinOutcome` |
+| **`server/`** | Money and outcomes. | `mockServer.ts` validation, balance, bonus state, idempotency<br/>`client.ts` retry with backoff and the same request id |
+| **`game/`** | What can happen now. | `stateMachine.ts` idle → spinning → stopping → presenting → idle<br/>`GameController.ts` sequences server, state machine and views |
+| **`view/`** | How it looks. Pixi only. | `Reel.ts`, `ReelSet.ts`, `WinPresenter.ts`, `ParticlePool.ts`, `symbolTextures.ts`, `tween.ts` |
+| **`ui/`** | DOM HUD and perf overlay. | `hud.ts`, `perfOverlay.ts` |
+| **`scripts/`** | Monte Carlo RTP report. | `simulate.ts` |
+| **`tests/`** | Math, server and state machine tests. | `engine.test.ts`, `server.test.ts`, `stateMachine.test.ts` |
 
 ### Round flow
 
