@@ -16,6 +16,9 @@ export interface StopTiming {
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
+/** Vertical centre of a row, in reel coordinates. Row -1 is the hidden wrap row. */
+export const rowCenterY = (row: number) => row * SYMBOL_SIZE + SYMBOL_SIZE / 2;
+
 /**
  * One reel column. `position` is a float in symbol units. Each sprite's
  * slot is `(position + index) mod COUNT`, so the same few sprites scroll
@@ -124,14 +127,13 @@ export class Reel {
         sprite.texture = this.textureOnWrap(i);
       }
       const slot = p - cycle * COUNT;
-      sprite.y = (slot - 1) * SYMBOL_SIZE + SYMBOL_SIZE / 2;
+      sprite.y = rowCenterY(slot - 1);
     });
   }
 
   private textureOnWrap(index: number): Texture {
     if (this.phase === 'stopping') {
-      const row = this.finalRow(index);
-      const symbol = row >= 0 ? this.target[row] : undefined;
+      const symbol = this.targetSymbol(this.finalRow(index));
       if (symbol !== undefined) return this.textures[symbol];
     }
     return this.randomTexture();
@@ -139,6 +141,11 @@ export class Reel {
 
   private finalRow(index: number): number {
     return mod(this.finalPosition + index, COUNT) - 1;
+  }
+
+  /** Target symbol for a visible row; undefined for the hidden wrap row. */
+  private targetSymbol(row: number): SymbolId | undefined {
+    return row >= 0 ? this.target[row] : undefined;
   }
 
   /**
@@ -151,13 +158,13 @@ export class Reel {
     this.position = this.finalPosition;
     this.sprites.forEach((sprite, i) => {
       const row = this.finalRow(i);
-      const symbol = row >= 0 ? this.target[row] : undefined;
+      const symbol = this.targetSymbol(row);
       if (symbol !== undefined) {
         sprite.texture = this.textures[symbol];
         this.rowSprites[row] = sprite;
       }
       this.cycles[i] = Math.floor((this.position + i) / COUNT);
-      sprite.y = row * SYMBOL_SIZE + SYMBOL_SIZE / 2;
+      sprite.y = rowCenterY(row);
     });
   }
 

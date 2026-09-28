@@ -1,4 +1,5 @@
-import type { GameState } from '../game/stateMachine';
+import { formatMoney } from '../game/format';
+import type { HudPort, HudState, MessageKind } from '../game/ports';
 
 /**
  * HUD in plain DOM, not canvas: real buttons give keyboard support, focus
@@ -12,23 +13,13 @@ export interface HudCallbacks {
   onBuyBonus: () => void;
 }
 
-export interface HudView {
-  state: GameState;
-  inFreeSpins: boolean;
-  canAffordSpin: boolean;
-  canAffordBonus: boolean;
-}
-
-export const formatMoney = (cents: number): string =>
-  (cents / 100).toLocaleString('sv-SE', { style: 'currency', currency: 'EUR' });
-
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`Missing #${id}`);
   return node as T;
 }
 
-export class Hud {
+export class Hud implements HudPort {
   private readonly balance = el('balance');
   private readonly bet = el('bet');
   private readonly win = el('win');
@@ -76,7 +67,6 @@ export class Hud {
     this.win.textContent = cents > 0 ? formatMoney(cents) : '–';
   }
 
-  /** Screen reader announcement for results that are only shown visually. */
   announce(text: string): void {
     this.announcer.textContent = text;
   }
@@ -86,7 +76,7 @@ export class Hud {
     this.session.textContent = `Session ${minutes} min · Net ${sign}${formatMoney(netCents)}`;
   }
 
-  showMessage(text: string, kind: 'info' | 'bonus' | 'error' = 'info', holdMs = 0): void {
+  showMessage(text: string, kind: MessageKind = 'info', holdMs = 0): void {
     clearTimeout(this.messageTimer);
     this.message.textContent = text;
     this.message.dataset.kind = kind;
@@ -98,7 +88,7 @@ export class Hud {
     this.message.hidden = true;
   }
 
-  render(view: HudView): void {
+  render(view: HudState): void {
     const idle = view.state === 'idle';
     const busy = view.state === 'buying' || view.state === 'error';
     const stoppable = view.state === 'spinning' || view.state === 'stopping' || view.state === 'presenting';

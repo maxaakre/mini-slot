@@ -24,16 +24,19 @@ export const Sym = {
 export type SymbolId = (typeof Sym)[keyof typeof Sym];
 
 export const SYMBOL_NAMES: Record<SymbolId, string> = {
-  0: 'J',
-  1: 'Q',
-  2: 'K',
-  3: 'A',
-  4: 'Orb',
-  5: 'Gem',
-  6: 'Star',
-  7: 'Wild',
-  8: 'Bonus',
+  [Sym.J]: 'J',
+  [Sym.Q]: 'Q',
+  [Sym.K]: 'K',
+  [Sym.A]: 'A',
+  [Sym.ORB]: 'Orb',
+  [Sym.GEM]: 'Gem',
+  [Sym.STAR]: 'Star',
+  [Sym.WILD]: 'Wild',
+  [Sym.SCATTER]: 'Bonus',
 };
+
+/** Shortest run that pays on a line. */
+export const LINE_MIN_COUNT = 3;
 
 /** Line pays for 3, 4 and 5 of a kind, in multiples of the line bet. */
 export const PAYTABLE: Partial<Record<SymbolId, readonly [number, number, number]>> = {
@@ -47,7 +50,10 @@ export const PAYTABLE: Partial<Record<SymbolId, readonly [number, number, number
   [Sym.WILD]: [50, 250, 1000],
 };
 
-/** Scatter pays anywhere, in multiples of the total bet. Index = count - 3. */
+/** Fewest scatters that pay. */
+export const SCATTER_MIN_COUNT = 3;
+
+/** Scatter pays anywhere, in multiples of the total bet. Index = count - SCATTER_MIN_COUNT. */
 export const SCATTER_PAYS: readonly number[] = [2, 10, 50];
 
 /** Row index per reel, left to right. */
@@ -82,27 +88,34 @@ export const FREE_SPINS = {
  */
 export const BONUS_BUY_COST = 77;
 
+/** Wins at or above this many total bets count as a big win. */
+export const BIG_WIN_BETS = 15;
+
 /** Bet levels in cents. Multiples of the line count keep line bets integer. */
 export const BET_LEVELS: readonly number[] = [10, 20, 50, 100, 200, 500];
 
+/** How many of each symbol a strip holds, indexed by `SymbolId`. */
+type SymbolCounts = readonly number[];
+
 /** Symbol counts per reel for the base game. The strips are built from these. */
-const BASE_REEL_COUNTS: readonly Record<SymbolId, number>[] = [
-  { 0: 8, 1: 8, 2: 7, 3: 7, 4: 5, 5: 4, 6: 3, 7: 1, 8: 1 },
-  { 0: 8, 1: 8, 2: 7, 3: 7, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1 },
-  { 0: 8, 1: 8, 2: 7, 3: 7, 4: 5, 5: 4, 6: 3, 7: 2, 8: 2 },
-  { 0: 8, 1: 8, 2: 7, 3: 7, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1 },
-  { 0: 8, 1: 8, 2: 7, 3: 7, 4: 5, 5: 4, 6: 3, 7: 1, 8: 1 },
+const BASE_REEL_COUNTS: readonly SymbolCounts[] = [
+  // J  Q  K  A  Orb Gem Star Wild Bonus
+  [8, 8, 7, 7, 5, 4, 3, 1, 1],
+  [8, 8, 7, 7, 5, 4, 3, 2, 1],
+  [8, 8, 7, 7, 5, 4, 3, 2, 2],
+  [8, 8, 7, 7, 5, 4, 3, 2, 1],
+  [8, 8, 7, 7, 5, 4, 3, 1, 1],
 ];
 
 /**
  * Builds a reel strip from symbol counts and shuffles it with a fixed seed,
  * so the strips are identical on every run and in every environment.
  */
-function buildStrip(counts: Record<SymbolId, number>, seed: number): SymbolId[] {
+function buildStrip(counts: SymbolCounts, seed: number): SymbolId[] {
   const strip: SymbolId[] = [];
-  for (const [id, count] of Object.entries(counts)) {
-    for (let i = 0; i < count; i++) strip.push(Number(id) as SymbolId);
-  }
+  counts.forEach((count, id) => {
+    for (let i = 0; i < count; i++) strip.push(id as SymbolId);
+  });
   const rng = createRng(seed);
   // Fisher–Yates shuffle.
   for (let i = strip.length - 1; i > 0; i--) {
@@ -116,12 +129,13 @@ function buildStrip(counts: Record<SymbolId, number>, seed: number): SymbolId[] 
  * Free spins use their own, richer strips (more wilds and premiums). This is
  * how most modern slots make the bonus feel different from the base game.
  */
-const FREE_REEL_COUNTS: readonly Record<SymbolId, number>[] = [
-  { 0: 6, 1: 6, 2: 6, 3: 6, 4: 5, 5: 4, 6: 4, 7: 2, 8: 1 },
-  { 0: 6, 1: 6, 2: 6, 3: 6, 4: 5, 5: 4, 6: 4, 7: 4, 8: 1 },
-  { 0: 6, 1: 6, 2: 6, 3: 6, 4: 5, 5: 4, 6: 4, 7: 4, 8: 1 },
-  { 0: 6, 1: 6, 2: 6, 3: 6, 4: 5, 5: 4, 6: 4, 7: 4, 8: 1 },
-  { 0: 6, 1: 6, 2: 6, 3: 6, 4: 5, 5: 4, 6: 4, 7: 2, 8: 1 },
+const FREE_REEL_COUNTS: readonly SymbolCounts[] = [
+  // J  Q  K  A  Orb Gem Star Wild Bonus
+  [6, 6, 6, 6, 5, 4, 4, 2, 1],
+  [6, 6, 6, 6, 5, 4, 4, 4, 1],
+  [6, 6, 6, 6, 5, 4, 4, 4, 1],
+  [6, 6, 6, 6, 5, 4, 4, 4, 1],
+  [6, 6, 6, 6, 5, 4, 4, 2, 1],
 ];
 
 export type ReelSet = readonly (readonly SymbolId[])[];

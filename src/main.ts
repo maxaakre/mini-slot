@@ -22,7 +22,15 @@ import './styles.css';
  *   ?debug        expose window.__debug in production builds
  */
 const params = new URLSearchParams(location.search);
-const seed = Number(params.get('seed') ?? Math.floor(Math.random() * 1e9));
+
+/** Reads a numeric URL param. Missing, malformed or out-of-range values use the fallback. */
+function numberParam(name: string, fallback: number, { min = -Infinity, max = Infinity } = {}): number {
+  const raw = params.get(name);
+  const value = raw === null || raw.trim() === '' ? NaN : Number(raw);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
+
+const seed = Math.trunc(numberParam('seed', Math.floor(Math.random() * 1e9)));
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Largest frame step we simulate, so a background tab does not jump. */
@@ -45,9 +53,9 @@ async function start(): Promise<void> {
 
   const server = new MockServer({
     seed,
-    balance: Number(params.get('balance') ?? 100_000),
-    latencyMs: Number(params.get('latency') ?? 250),
-    failureRate: Number(params.get('fail') ?? 0),
+    balance: Math.trunc(numberParam('balance', 100_000, { min: 0 })),
+    latencyMs: numberParam('latency', 250, { min: 0 }),
+    failureRate: numberParam('fail', 0, { min: 0, max: 1 }),
   });
 
   const tweens = new Tweens();
@@ -95,7 +103,7 @@ async function start(): Promise<void> {
     reels,
     presenter,
     hud,
-    tweens,
+    clock: tweens,
     initialGrid,
     turbo,
     reducedMotion,

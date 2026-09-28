@@ -1,7 +1,8 @@
 import { Container, Graphics, type Sprite, type Texture } from 'pixi.js';
 import { REELS, ROWS, Sym, type ReelSet as Strips, type SymbolId } from '../math/config';
 import type { Grid, Position } from '../math/engine';
-import { Reel } from './Reel';
+import type { ReelsPort } from '../game/ports';
+import { Reel, rowCenterY } from './Reel';
 import { SYMBOL_SIZE } from './symbolTextures';
 import { ease, type TweenHandle, type Tweens } from './tween';
 
@@ -12,7 +13,10 @@ export const BOARD_HEIGHT = ROWS * SYMBOL_SIZE;
 /** Extra wait on the remaining reels when a bonus is one scatter away. */
 const ANTICIPATION_MS = 900;
 
-export class ReelSet {
+/** Left edge of a reel, in board coordinates. */
+const reelX = (reel: number) => reel * (SYMBOL_SIZE + REEL_GAP);
+
+export class ReelSet implements ReelsPort {
   readonly view = new Container();
   private readonly reels: Reel[];
   private readonly frame = new Graphics();
@@ -30,7 +34,7 @@ export class ReelSet {
     const reelLayer = new Container();
     this.reels = strips.map((strip, i) => {
       const reel = new Reel(textures, tweens, strip, initial[i]!);
-      reel.view.x = i * (SYMBOL_SIZE + REEL_GAP);
+      reel.view.x = reelX(i);
       reelLayer.addChild(reel.view);
       return reel;
     });
@@ -83,10 +87,7 @@ export class ReelSet {
 
   /** Centre of a cell, in board coordinates. */
   cellCenter(reel: number, row: number): { x: number; y: number } {
-    return {
-      x: reel * (SYMBOL_SIZE + REEL_GAP) + SYMBOL_SIZE / 2,
-      y: row * SYMBOL_SIZE + SYMBOL_SIZE / 2,
-    };
+    return { x: reelX(reel) + SYMBOL_SIZE / 2, y: rowCenterY(row) };
   }
 
   /** Dims every cell except the winners, and pulses the winners. */

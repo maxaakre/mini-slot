@@ -30,6 +30,16 @@ describe('StateMachine', () => {
     expect(fsm.state).toBe('idle');
   });
 
+  it('can fail from any in-flight state, so an error never leaves a round stuck', () => {
+    const paths = [['SPIN'], ['SPIN', 'RESULT'], ['SPIN', 'RESULT', 'STOPPED'], ['BUY']] as const;
+    for (const path of paths) {
+      const fsm = new StateMachine();
+      for (const event of path) fsm.send(event);
+      expect(fsm.send('FAIL')).toBe(true);
+      expect(fsm.state).toBe('error');
+    }
+  });
+
   it('blocks spins while a bonus buy is in flight', () => {
     const fsm = new StateMachine();
     fsm.send('BUY');

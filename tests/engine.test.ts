@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_STRIPS, FREE_SPINS, PAYLINES, PAYTABLE, REELS, ROWS, SCATTER_PAYS, Sym, type SymbolId } from '../src/math/config';
-import { evaluate, evaluateLine, gridFromStops, playBonus, playSpin, type Grid } from '../src/math/engine';
+import {
+  evaluate,
+  evaluateLine,
+  gridFromStops,
+  playBonus,
+  playSpin,
+  retriggerSpins,
+  type Grid,
+} from '../src/math/engine';
 import { createRng } from '../src/math/rng';
 
 const { J, Q, K, A, ORB, GEM, STAR, WILD, SCATTER } = Sym;
@@ -114,6 +122,12 @@ describe('spins', () => {
     const last = BASE_STRIPS[0]!.length - 1;
     const column = gridFromStops([last, 0, 0, 0, 0], BASE_STRIPS)[0]!;
     expect(column).toEqual([BASE_STRIPS[0]![last], BASE_STRIPS[0]![0], BASE_STRIPS[0]![1]]);
+  });
+
+  it('caps retriggers at the spin limit', () => {
+    expect(retriggerSpins(10, 5)).toBe(5);
+    expect(retriggerSpins(FREE_SPINS.maxSpins - 2, 5)).toBe(2);
+    expect(retriggerSpins(FREE_SPINS.maxSpins, 5)).toBe(0);
   });
 
   it('never runs a bonus past the spin cap', () => {

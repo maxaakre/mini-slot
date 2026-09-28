@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BONUS_BUY_COST, FREE_SPINS } from '../src/math/config';
 import { createRequestId, playWithRetry } from '../src/server/client';
-import { MockServer, ServerError, type RoundRequest } from '../src/server/mockServer';
+import { MockServer } from '../src/server/mockServer';
+import { ServerError, type RoundRequest } from '../src/server/protocol';
 
 let nextId = 0;
 const req = (type: RoundRequest['type'], bet = 100): RoundRequest => ({ requestId: `r${nextId++}`, type, bet });
@@ -31,6 +32,15 @@ describe('MockServer', () => {
     const first = await server.play(request);
     const second = await server.play(request);
     expect(second).toEqual(first);
+    expect(server.getSession().balance).toBe(first.balance);
+  });
+
+  it('rejects a reused request id with a different bet or type', async () => {
+    const server = new MockServer({ seed: 1, balance: 1000 });
+    const request = req('spin');
+    const first = await server.play(request);
+    await expect(server.play({ ...request, bet: 200 })).rejects.toMatchObject({ code: 'REQUEST_ID_REUSED' });
+    await expect(server.play({ ...request, type: 'buyBonus' })).rejects.toMatchObject({ code: 'REQUEST_ID_REUSED' });
     expect(server.getSession().balance).toBe(first.balance);
   });
 

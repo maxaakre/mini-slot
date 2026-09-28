@@ -1,6 +1,14 @@
 import { BET_LEVELS, BONUS_BUY_COST, FREE_SPINS } from '../math/config';
-import { playSpin, type SpinOutcome } from '../math/engine';
+import { playSpin, retriggerSpins, type SpinOutcome } from '../math/engine';
 import { createRng, type Rng } from '../math/rng';
+import {
+  ServerError,
+  type FreeSpinsState,
+  type GameApi,
+  type RoundRequest,
+  type RoundResponse,
+  type Session,
+} from './protocol';
 
 /**
  * In-browser stand-in for a real game server.
@@ -9,62 +17,6 @@ import { createRng, type Rng } from '../math/rng';
  * the result and settles the balance, and the client only presents it —
  * the same split a regulated game needs.
  */
-
-export type RoundType = 'spin' | 'freeSpin' | 'buyBonus';
-
-export interface RoundRequest {
-  /** Client-generated. Retrying with the same id never charges twice. */
-  requestId: string;
-  type: RoundType;
-  /** Cents. Ignored for free spins, which use the bet that started the bonus. */
-  bet: number;
-}
-
-export interface FreeSpinsState {
-  remaining: number;
-  played: number;
-  total: number;
-  multiplier: number;
-  bet: number;
-  /** Cents won so far in this bonus. */
-  totalWin: number;
-}
-
-export interface RoundResponse {
-  requestId: string;
-  roundId: number;
-  type: RoundType;
-  /** Cents taken for this round (0 for free spins). */
-  cost: number;
-  /** Null for a bonus buy, which goes straight into free spins. */
-  outcome: SpinOutcome | null;
-  /** Cents. */
-  win: number;
-  /** Balance after the round is settled, in cents. */
-  balance: number;
-  /**
-   * Bonus state after this round. On the last free spin `remaining` is 0,
-   * so the client can still show the bonus summary.
-   */
-  freeSpins: FreeSpinsState | null;
-}
-
-export type ServerErrorCode =
-  | 'INVALID_BET'
-  | 'INSUFFICIENT_FUNDS'
-  | 'FREE_SPINS_ACTIVE'
-  | 'NO_FREE_SPINS'
-  | 'NETWORK';
-
-export class ServerError extends Error {
-  constructor(
-    readonly code: ServerErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ServerError';
-  }
-}
 
 export interface MockServerOptions {
   seed: number;
@@ -80,7 +32,12 @@ export interface MockServerOptions {
 
 const IDEMPOTENCY_CACHE_SIZE = 50;
 
-export class MockServer {
+interface SettledRound {
+  request: RoundRequest;
+  response: RoundResponse;
+}
+
+export class MockServer implements GameApi {
   private balance: number;
   private roundId = 0;
   private freeSpins: FreeSpinsState | null = null;
@@ -89,7 +46,7 @@ export class MockServer {
   private readonly networkRng: Rng;
   private readonly latencyMs: number;
   private readonly failureRate: number;
-  private readonly responses = new Map<string, RoundResponse>();
+  private readonly rounds = new Map<string, SettledRound>();
 
   constructor(options: MockServerOptions) {
     this.rng = createRng(options.seed);
@@ -100,17 +57,21 @@ export class MockServer {
   }
 
   /** Initial state for a client that (re)connects, e.g. mid-bonus after a reload. */
-  getSession(): { balance: number; freeSpins: FreeSpinsState | null } {
+  getSession(): Session {
     return { balance: this.balance, freeSpins: this.freeSpins && { ...this.freeSpins } };
   }
 
   async play(request: RoundRequest): Promise<RoundResponse> {
     await this.delay();
 
-    const cached = this.responses.get(request.requestId);
-    const response = cached ?? this.settle(request);
+    const cached = this.rounds.get(request.requestId);
+    if (cached && !sameRound(cached.request, request)) {
+      // A retry must repeat the original request exactly.
+      throw new ServerError('REQUEST_ID_REUSED', 'Request id was already used for a different round');
+    }
+    const response = cached?.response ?? this.settle(request);
 
-    if (!cached) this.remember(response);
+    if (!cached) this.remember(request, response);
 
     if (this.networkRng.next() < this.failureRate) {
       // The round is settled, but the client never hears about it.
@@ -155,12 +116,9 @@ export class MockServer {
     bonus.played++;
     bonus.remaining--;
     bonus.totalWin += outcome.totalWin;
-    if (outcome.freeSpinsAwarded > 0) {
-      const room = FREE_SPINS.maxSpins - bonus.total;
-      const added = Math.min(outcome.freeSpinsAwarded, room);
-      bonus.remaining += added;
-      bonus.total += added;
-    }
+    const added = retriggerSpins(bonus.total, outcome.freeSpinsAwarded);
+    bonus.remaining += added;
+    bonus.total += added;
 
     const response = this.response(request, 0, outcome, outcome.totalWin);
     if (bonus.remaining === 0) this.freeSpins = null;
@@ -215,12 +173,12 @@ export class MockServer {
     };
   }
 
-  private remember(response: RoundResponse): void {
-    this.responses.set(response.requestId, response);
-    if (this.responses.size > IDEMPOTENCY_CACHE_SIZE) {
+  private remember(request: RoundRequest, response: RoundResponse): void {
+    this.rounds.set(request.requestId, { request: { ...request }, response });
+    if (this.rounds.size > IDEMPOTENCY_CACHE_SIZE) {
       // Maps keep insertion order, so the first key is the oldest.
-      const oldest = this.responses.keys().next().value;
-      if (oldest !== undefined) this.responses.delete(oldest);
+      const oldest = this.rounds.keys().next().value;
+      if (oldest !== undefined) this.rounds.delete(oldest);
     }
   }
 
@@ -230,4 +188,8 @@ export class MockServer {
     const ms = this.latencyMs * (0.5 + this.networkRng.next());
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+function sameRound(a: RoundRequest, b: RoundRequest): boolean {
+  return a.type === b.type && a.bet === b.bet;
 }

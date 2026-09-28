@@ -1,8 +1,4 @@
-import { ServerError, type RoundRequest, type RoundResponse } from './mockServer';
-
-export interface GameApi {
-  play(request: RoundRequest): Promise<RoundResponse>;
-}
+import { ServerError, type GameApi, type RoundRequest, type RoundResponse } from './protocol';
 
 export interface RetryOptions {
   retries: number;

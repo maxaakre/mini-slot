@@ -1,3 +1,5 @@
+import type { Clock } from '../game/ports';
+
 /**
  * Tiny tween runner driven by the Pixi ticker. Enough for this game, and it
  * keeps every animation on one clock so "skip" and "turbo" work everywhere.
@@ -8,7 +10,6 @@ export type Easing = (t: number) => number;
 export const ease = {
   linear: (t: number) => t,
   outCubic: (t: number) => 1 - (1 - t) ** 3,
-  inOutSine: (t: number) => -(Math.cos(Math.PI * t) - 1) / 2,
   /** Overshoots and settles back — the classic reel "bounce". */
   outBack: (t: number) => {
     const c1 = 1.2;
@@ -20,7 +21,6 @@ export const ease = {
 export interface TweenOptions {
   duration: number;
   ease?: Easing;
-  delay?: number;
   onUpdate: (progress: number) => void;
 }
 
@@ -37,7 +37,7 @@ interface ActiveTween {
   resolve: () => void;
 }
 
-export class Tweens {
+export class Tweens implements Clock {
   private readonly active = new Set<ActiveTween>();
 
   add(options: TweenOptions): TweenHandle {
@@ -45,7 +45,7 @@ export class Tweens {
     const done = new Promise<void>((resolve) => {
       tween = {
         elapsed: 0,
-        options: { ease: ease.linear, delay: 0, ...options },
+        options: { ease: ease.linear, ...options },
         resolve,
       };
     });
@@ -61,19 +61,13 @@ export class Tweens {
   update(deltaMs: number): void {
     for (const tween of this.active) {
       tween.elapsed += deltaMs;
-      const { delay, duration, ease: easing, onUpdate } = tween.options;
-      const t = tween.elapsed - delay;
-      if (t < 0) continue;
-      if (t >= duration) {
+      const { duration, ease: easing, onUpdate } = tween.options;
+      if (tween.elapsed >= duration) {
         this.complete(tween);
       } else {
-        onUpdate(easing(t / duration));
+        onUpdate(easing(tween.elapsed / duration));
       }
     }
-  }
-
-  finishAll(): void {
-    for (const tween of [...this.active]) this.complete(tween);
   }
 
   get count(): number {

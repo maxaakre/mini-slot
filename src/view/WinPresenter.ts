@@ -1,24 +1,15 @@
 import { Container, Graphics, Text } from 'pixi.js';
-import { PAYLINES } from '../math/config';
-import type { Position, SpinOutcome } from '../math/engine';
+import type { PresentOptions, PresenterPort } from '../game/ports';
+import { PAYLINES, SCATTER_MIN_COUNT } from '../math/config';
+import { isBigWin, type Position, type SpinOutcome } from '../math/engine';
 import type { ParticlePool } from './ParticlePool';
 import { BOARD_HEIGHT, BOARD_WIDTH, type ReelSet } from './ReelSet';
+import { DISPLAY_FONT } from './textStyle';
 import { ease, type TweenHandle, type Tweens } from './tween';
 
 const LINE_COLORS = [0xffd23a, 0x3ad6ff, 0xff4fa3, 0x7fffd0, 0xffa53a, 0xc59bff, 0x7fb3ff, 0xff7b7b, 0xb4ff7f, 0xffffff];
 
-/** Wins at or above this many bets get the big-win treatment. */
-export const BIG_WIN_BETS = 15;
-
-export interface PresentOptions {
-  bet: number;
-  turbo: boolean;
-  reducedMotion: boolean;
-  /** Called with the counted-up win in cents as it animates. */
-  onCount: (cents: number) => void;
-}
-
-export class WinPresenter {
+export class WinPresenter implements PresenterPort {
   readonly view = new Container();
   private readonly lines = new Graphics();
   private readonly banner: Text;
@@ -32,8 +23,7 @@ export class WinPresenter {
     this.banner = new Text({
       text: 'BIG WIN',
       style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontWeight: '900',
+        ...DISPLAY_FONT,
         fontSize: 96,
         fill: 0xffe066,
         stroke: { color: 0x5a2a00, width: 10 },
@@ -46,16 +36,15 @@ export class WinPresenter {
     this.view.addChild(this.lines, this.banner);
   }
 
-  /** Resolves when the presentation ends or is skipped. */
   async present(outcome: SpinOutcome, options: PresentOptions): Promise<void> {
     if (outcome.totalWin === 0 && outcome.freeSpinsAwarded === 0) return;
 
     const positions: Position[] = outcome.lineWins.flatMap((w) => w.positions);
-    if (outcome.scatterPositions.length >= 3) positions.push(...outcome.scatterPositions);
+    if (outcome.scatterPositions.length >= SCATTER_MIN_COUNT) positions.push(...outcome.scatterPositions);
     this.reels.highlight(positions);
     this.drawLines(outcome);
 
-    const big = outcome.totalWin >= options.bet * BIG_WIN_BETS;
+    const big = isBigWin(outcome.totalWin, options.bet);
     if (!options.reducedMotion) {
       const perCell = big ? 18 : 6;
       for (const [reel, row] of positions) {

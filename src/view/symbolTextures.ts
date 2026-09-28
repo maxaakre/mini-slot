@@ -1,5 +1,6 @@
 import { Container, Graphics, Rectangle, Text, type Renderer, type Texture } from 'pixi.js';
 import { Sym, SYMBOL_NAMES, type SymbolId } from '../math/config';
+import { DISPLAY_FONT } from './textStyle';
 
 export const SYMBOL_SIZE = 140;
 
@@ -67,8 +68,7 @@ function drawSymbol(id: SymbolId): Container {
     const label = new Text({
       text: SYMBOL_NAMES[id].toUpperCase(),
       style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontWeight: '900',
+        ...DISPLAY_FONT,
         fontSize: isLow ? 72 : 30,
         fill: isLow ? style.accent : 0xffffff,
         stroke: { color: 0x000000, width: 5 },

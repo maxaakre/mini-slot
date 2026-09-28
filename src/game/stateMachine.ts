@@ -2,15 +2,16 @@
  * Round flow as an explicit state machine.
  *
  *   idle ──SPIN──▶ spinning ──RESULT──▶ stopping ──STOPPED──▶ presenting ──DONE──▶ idle
- *     │               │
- *     │               └──FAIL──▶ error ──DISMISS──▶ idle
- *     │                           ▲
- *     └──BUY──▶ buying ──FAIL─────┘
- *                  └──BOUGHT──▶ idle
+ *     │
+ *     └──BUY──▶ buying ──BOUGHT──▶ idle
+ *
+ *   spinning, stopping, presenting, buying ──FAIL──▶ error ──DISMISS──▶ idle
  *
  * Reels start spinning on SPIN, before the server answers, so the game
- * feels instant. Any event that is not valid in the current state is
- * ignored, which removes a whole class of double-click and race bugs.
+ * feels instant. FAIL is valid wherever a round is in flight, so no error
+ * can leave the game stuck. Any event that is not valid in the current
+ * state is ignored, which removes a whole class of double-click and race
+ * bugs.
  */
 
 export type GameState = 'idle' | 'spinning' | 'stopping' | 'presenting' | 'buying' | 'error';
@@ -20,8 +21,8 @@ export type GameEvent = 'SPIN' | 'RESULT' | 'STOPPED' | 'DONE' | 'BUY' | 'BOUGHT
 const TRANSITIONS: Record<GameState, Partial<Record<GameEvent, GameState>>> = {
   idle: { SPIN: 'spinning', BUY: 'buying' },
   spinning: { RESULT: 'stopping', FAIL: 'error' },
-  stopping: { STOPPED: 'presenting' },
-  presenting: { DONE: 'idle' },
+  stopping: { STOPPED: 'presenting', FAIL: 'error' },
+  presenting: { DONE: 'idle', FAIL: 'error' },
   buying: { BOUGHT: 'idle', FAIL: 'error' },
   error: { DISMISS: 'idle' },
 };

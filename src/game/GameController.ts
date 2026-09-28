@@ -1,21 +1,27 @@
 import { BET_LEVELS, BONUS_BUY_COST } from '../math/config';
-import type { Grid } from '../math/engine';
-import { createRequestId, playWithRetry, type GameApi } from '../server/client';
-import { ServerError, type FreeSpinsState, type RoundResponse, type RoundType } from '../server/mockServer';
-import { formatMoney, type Hud } from '../ui/hud';
-import type { ReelSet } from '../view/ReelSet';
-import type { Tweens } from '../view/tween';
-import { BIG_WIN_BETS, type WinPresenter } from '../view/WinPresenter';
-import { StateMachine } from './stateMachine';
+import { isBigWin, type Grid } from '../math/engine';
+import { createRequestId, playWithRetry } from '../server/client';
+import {
+  ServerError,
+  type FreeSpinsState,
+  type GameApi,
+  type RoundResponse,
+  type RoundType,
+  type ServerErrorCode,
+  type Session,
+} from '../server/protocol';
+import { formatMoney } from './format';
+import type { Clock, HudPort, PresenterPort, ReelsPort } from './ports';
+import { StateMachine, type GameState } from './stateMachine';
 
 export interface ControllerDeps {
   api: GameApi;
   /** Current server state, used on start and to reconcile after errors. */
-  getSession: () => { balance: number; freeSpins: FreeSpinsState | null };
-  reels: ReelSet;
-  presenter: WinPresenter;
-  hud: Hud;
-  tweens: Tweens;
+  getSession: () => Session;
+  reels: ReelsPort;
+  presenter: PresenterPort;
+  hud: HudPort;
+  clock: Clock;
   initialGrid: Grid;
   turbo: boolean;
   reducedMotion: boolean;
@@ -26,6 +32,15 @@ const MIN_SPIN_MS = { normal: 450, turbo: 120 };
 const FREE_SPIN_PAUSE_MS = { normal: 450, turbo: 150 };
 const RETRY = { retries: 3, backoffMs: 250 };
 
+const ERROR_MESSAGES: Record<ServerErrorCode, string> = {
+  INSUFFICIENT_FUNDS: 'Not enough balance for this bet',
+  INVALID_BET: 'That bet is not available',
+  FREE_SPINS_ACTIVE: 'Finish your free spins first',
+  NO_FREE_SPINS: 'No free spins left',
+  REQUEST_ID_REUSED: 'Something went wrong. Your balance is safe — please try again.',
+  NETWORK: 'Connection problem. Your balance is safe — please try again.',
+};
+
 /**
  * Glue between the state machine, the server and the views.
  *
@@ -34,7 +49,7 @@ const RETRY = { retries: 3, backoffMs: 250 };
  * sequences them.
  */
 export class GameController {
-  readonly fsm = new StateMachine();
+  private readonly fsm = new StateMachine();
   private balance: number;
   private betIndex = BET_LEVELS.indexOf(100);
   private freeSpins: FreeSpinsState | null;
@@ -61,6 +76,10 @@ export class GameController {
     if (this.freeSpins) this.scheduleFreeSpin();
   }
 
+  get state(): GameState {
+    return this.fsm.state;
+  }
+
   private get bet(): number {
     return BET_LEVELS[this.betIndex]!;
   }
@@ -69,7 +88,7 @@ export class GameController {
   press(): void {
     switch (this.fsm.state) {
       case 'idle':
-        if (!this.freeSpins) void this.playRound('spin');
+        if (!this.freeSpins) this.startRound('spin');
         return;
       case 'spinning':
       case 'stopping':
@@ -99,7 +118,7 @@ export class GameController {
     try {
       const response = await this.request('buyBonus');
       this.fsm.send('BOUGHT');
-      this.deps.hud.announce(`Bought ${response.freeSpins?.total} free spins`);
+      if (response.freeSpins) this.deps.hud.announce(`Bought ${response.freeSpins.total} free spins`);
       this.scheduleFreeSpin(true);
     } catch (error) {
       this.fsm.send('FAIL');
@@ -107,9 +126,23 @@ export class GameController {
     }
   }
 
+  /**
+   * Runs a round and turns any unexpected error into a recoverable one.
+   * Without this, a throw during the presentation would leave the game
+   * stuck mid-round.
+   */
+  private startRound(type: Extract<RoundType, 'spin' | 'freeSpin'>): void {
+    this.playRound(type).catch((error: unknown) => {
+      console.error(error);
+      this.deps.presenter.skip();
+      this.fsm.send('FAIL');
+      this.handleError(error);
+    });
+  }
+
   private async playRound(type: Extract<RoundType, 'spin' | 'freeSpin'>): Promise<void> {
     if (!this.fsm.send('SPIN')) return;
-    const { reels, presenter, hud, tweens } = this.deps;
+    const { reels, presenter, hud, clock } = this.deps;
 
     this.skipRequested = false;
     hud.setWin(0);
@@ -119,7 +152,7 @@ export class GameController {
       hud.setBalance(this.balance - this.bet);
     }
     reels.startSpin();
-    const minSpin = tweens.wait(this.turbo ? MIN_SPIN_MS.turbo : MIN_SPIN_MS.normal);
+    const minSpin = clock.wait(this.turbo ? MIN_SPIN_MS.turbo : MIN_SPIN_MS.normal);
 
     let response: RoundResponse;
     try {
@@ -140,8 +173,10 @@ export class GameController {
     this.lastGrid = outcome.grid;
     this.fsm.send('STOPPED');
 
+    // Free spins are measured against the bet that started the bonus.
+    const bet = response.freeSpins?.bet ?? this.bet;
     await presenter.present(outcome, {
-      bet: response.freeSpins?.bet ?? this.bet,
+      bet,
       turbo: this.turbo,
       reducedMotion: this.deps.reducedMotion,
       onCount: (cents) => hud.setWin(cents),
@@ -149,7 +184,7 @@ export class GameController {
     hud.setWin(outcome.totalWin);
     hud.setBalance(this.balance);
     if (outcome.totalWin > 0) {
-      const big = outcome.totalWin >= this.bet * BIG_WIN_BETS ? 'Big win! ' : '';
+      const big = isBigWin(outcome.totalWin, bet) ? 'Big win! ' : '';
       hud.announce(`${big}You won ${formatMoney(outcome.totalWin)}`);
     }
 
@@ -186,7 +221,7 @@ export class GameController {
       'bonus',
     );
     const pause = intro ? 1500 : this.turbo ? FREE_SPIN_PAUSE_MS.turbo : FREE_SPIN_PAUSE_MS.normal;
-    this.deps.tweens.wait(pause).done.then(() => this.startFreeSpin());
+    this.deps.clock.wait(pause).done.then(() => this.startFreeSpin());
   }
 
   private startFreeSpin(): void {
@@ -194,10 +229,10 @@ export class GameController {
     // Should always be idle here. If not, try again shortly rather than
     // leaving the bonus stuck.
     if (!this.fsm.can('SPIN')) {
-      this.deps.tweens.wait(200).done.then(() => this.startFreeSpin());
+      this.deps.clock.wait(200).done.then(() => this.startFreeSpin());
       return;
     }
-    void this.playRound('freeSpin');
+    this.startRound('freeSpin');
   }
 
   private async request(type: RoundType): Promise<RoundResponse> {
@@ -209,16 +244,7 @@ export class GameController {
   }
 
   private handleError(error: unknown): void {
-    const message =
-      error instanceof ServerError
-        ? {
-            INSUFFICIENT_FUNDS: 'Not enough balance for this bet',
-            INVALID_BET: 'That bet is not available',
-            FREE_SPINS_ACTIVE: 'Finish your free spins first',
-            NO_FREE_SPINS: 'No free spins left',
-            NETWORK: 'Connection problem. Your balance is safe — please try again.',
-          }[error.code]
-        : 'Something went wrong';
+    const message = error instanceof ServerError ? ERROR_MESSAGES[error.code] : 'Something went wrong';
     this.deps.hud.showMessage(message, 'error', 5000);
 
     // The server is the source of truth: re-sync instead of guessing.
@@ -228,18 +254,19 @@ export class GameController {
     this.deps.hud.setBalance(this.balance);
     this.fsm.send('DISMISS');
     // Resume the bonus after the player has had time to read the message.
-    if (this.freeSpins) this.deps.tweens.wait(2000).done.then(() => this.scheduleFreeSpin());
+    if (this.freeSpins) this.deps.clock.wait(2000).done.then(() => this.scheduleFreeSpin());
   }
 
   private render(): void {
     const { hud } = this.deps;
-    hud.setBet(this.bet, this.bet * BONUS_BUY_COST);
+    const bonusCost = this.bet * BONUS_BUY_COST;
+    hud.setBet(this.bet, bonusCost);
     if (this.fsm.state === 'idle') hud.setBalance(this.balance);
     hud.render({
       state: this.fsm.state,
       inFreeSpins: this.freeSpins !== null,
       canAffordSpin: this.balance >= this.bet,
-      canAffordBonus: this.balance >= this.bet * BONUS_BUY_COST,
+      canAffordBonus: this.balance >= bonusCost,
     });
   }
 

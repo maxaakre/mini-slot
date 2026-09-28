@@ -1,9 +1,12 @@
 import {
+  BIG_WIN_BETS,
   FREE_SPINS,
+  LINE_MIN_COUNT,
   PAYLINES,
   PAYTABLE,
   REELS,
   ROWS,
+  SCATTER_MIN_COUNT,
   SCATTER_PAYS,
   BASE_STRIPS,
   FREE_STRIPS,
@@ -78,8 +81,8 @@ function runLength(symbols: readonly SymbolId[], symbol: SymbolId): number {
 }
 
 function linePay(symbol: SymbolId, count: number): number {
-  if (count < 3) return 0;
-  return PAYTABLE[symbol]?.[count - 3] ?? 0;
+  if (count < LINE_MIN_COUNT) return 0;
+  return PAYTABLE[symbol]?.[count - LINE_MIN_COUNT] ?? 0;
 }
 
 /**
@@ -137,8 +140,9 @@ export function evaluate(grid: Grid, bet: number, multiplier = 1): Omit<SpinOutc
       if (symbolAt(grid, reel, row) === Sym.SCATTER) scatterPositions.push([reel, row]);
     }
   }
-  const scatterCount = Math.min(scatterPositions.length, 2 + SCATTER_PAYS.length);
-  const scatterWin = scatterCount >= 3 ? (SCATTER_PAYS[scatterCount - 3] ?? 0) * bet * multiplier : 0;
+  // More scatters than the table covers pay the top prize.
+  const scatterIndex = Math.min(scatterPositions.length, SCATTER_MIN_COUNT + SCATTER_PAYS.length - 1) - SCATTER_MIN_COUNT;
+  const scatterWin = scatterIndex >= 0 ? (SCATTER_PAYS[scatterIndex] ?? 0) * bet * multiplier : 0;
 
   const totalWin = lineWins.reduce((sum, w) => sum + w.amount, 0) + scatterWin;
 
@@ -164,17 +168,29 @@ export function playSpin(rng: Rng, bet: number, mode: SpinMode): SpinOutcome {
   return { ...result, stops, freeSpinsAwarded };
 }
 
+/**
+ * Free spins actually added by a retrigger, given the bonus size so far.
+ * The one place the spin cap is applied, so the simulator and the server
+ * can never disagree about it.
+ */
+export function retriggerSpins(totalSpins: number, awarded: number): number {
+  return Math.max(0, Math.min(awarded, FREE_SPINS.maxSpins - totalSpins));
+}
+
+export function isBigWin(win: number, bet: number): boolean {
+  return win >= bet * BIG_WIN_BETS;
+}
+
 /** Plays a whole bonus. Used by the simulator; the server plays it spin by spin. */
 export function playBonus(rng: Rng, bet: number, initialSpins: number = FREE_SPINS.awarded): { spins: number; totalWin: number } {
-  let remaining = initialSpins;
+  let total = initialSpins;
   let played = 0;
   let totalWin = 0;
-  while (remaining > 0) {
+  while (played < total) {
     const outcome = playSpin(rng, bet, 'free');
-    remaining--;
     played++;
     totalWin += outcome.totalWin;
-    remaining = Math.min(remaining + outcome.freeSpinsAwarded, FREE_SPINS.maxSpins - played);
+    total += retriggerSpins(total, outcome.freeSpinsAwarded);
   }
   return { spins: played, totalWin };
 }

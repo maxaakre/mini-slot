@@ -31,7 +31,8 @@ npm run build      # typecheck + production build
 
 ## Architecture
 
-The code is split into five layers. **Dependencies point one way only**, from the view down to the math.
+The code is split into five layers. **Dependencies point one way only**: each
+layer imports only from the layers to its right.
 
 ```mermaid
 flowchart LR
@@ -51,11 +52,15 @@ flowchart LR
 The math has no idea it runs in a browser. That is why the simulator and the
 tests use the exact same code as the game.
 
+The game never imports the view. Instead, `game/ports.ts` declares what it
+needs (reels, win presenter, HUD, clock), and `view/` and `ui/` implement
+those interfaces.
+
 | Layer | Owns | Key files |
 | --- | --- | --- |
 | **`math/`** | Pure game math. No DOM, no Pixi, no async. | `rng.ts` seeded PRNG behind an `Rng` interface<br/>`config.ts` paytable, lines, reel strips, bonus rules<br/>`engine.ts` drawStops → grid → evaluate → `SpinOutcome` |
-| **`server/`** | Money and outcomes. | `mockServer.ts` validation, balance, bonus state, idempotency<br/>`client.ts` retry with backoff and the same request id |
-| **`game/`** | What can happen now. | `stateMachine.ts` idle → spinning → stopping → presenting → idle<br/>`GameController.ts` sequences server, state machine and views |
+| **`server/`** | Money and outcomes. | `protocol.ts` the client–server contract (`GameApi`, requests, errors)<br/>`mockServer.ts` validation, balance, bonus state, idempotency<br/>`client.ts` retry with backoff and the same request id |
+| **`game/`** | What can happen now. | `stateMachine.ts` idle → spinning → stopping → presenting → idle<br/>`GameController.ts` sequences server, state machine and views<br/>`ports.ts` the interfaces the views implement |
 | **`view/`** | How it looks. Pixi only. | `Reel.ts`, `ReelSet.ts`, `WinPresenter.ts`, `ParticlePool.ts`, `symbolTextures.ts`, `tween.ts` |
 | **`ui/`** | DOM HUD and perf overlay. | `hud.ts`, `perfOverlay.ts` |
 | **`scripts/`** | Monte Carlo RTP report. | `simulate.ts` |
@@ -113,11 +118,12 @@ rounding anywhere in the money path.
 **Idempotent rounds.** Every request carries a client-generated id. If a
 response is lost after the server has settled the round, the client retries
 with the same id and gets the same result, so it is never charged twice.
-Business errors (for example insufficient funds) are never retried. You can
+Reusing an id for a different bet or round type is rejected. Business errors (for example insufficient funds) are never retried. You can
 try it with `?fail=0.5`.
 
 **An explicit state machine.** Events that are not valid in the current
-state are ignored. Double taps, a spin press during a bonus buy, or a late
+state are ignored. Any in-flight state can fail into `error`, so even an
+unexpected exception mid-round recovers to `idle`. Double taps, a spin press during a bonus buy, or a late
 server response cannot put the game in a broken state.
 
 **Reels start before the server answers.** This hides latency. A minimum
@@ -157,8 +163,9 @@ one place.
 - **Sound.** A production game needs it, and this is the first thing I would
   add, using an audio sprite with the Web Audio API.
 - **A real backend.** `MockServer` already has the shape of one: async
-  calls, errors, latency and idempotency. Swapping it out means changing the
-  `GameApi` implementation, not the game.
+  calls, errors, latency and idempotency. The contract lives in
+  `server/protocol.ts`, so swapping it out means a new `GameApi`
+  implementation, not a change to the game.
 
 ## Next steps (if this were a product)
 
