@@ -61,7 +61,7 @@ those interfaces.
 | **`math/`** | Pure game math. No DOM, no Pixi, no async. | `rng.ts` seeded PRNG behind an `Rng` interface<br/>`config.ts` paytable, lines, reel strips, bonus rules<br/>`engine.ts` drawStops → grid → evaluate → `SpinOutcome` |
 | **`server/`** | Money and outcomes. | `protocol.ts` the client–server contract (`GameApi`, requests, errors)<br/>`mockServer.ts` validation, balance, bonus state, idempotency<br/>`client.ts` retry with backoff and the same request id |
 | **`game/`** | What can happen now. | `stateMachine.ts` idle → spinning → stopping → presenting → idle<br/>`GameController.ts` sequences server, state machine and views<br/>`ports.ts` the interfaces the views implement |
-| **`view/`** | How it looks. Pixi only. | `Reel.ts`, `ReelSet.ts`, `WinPresenter.ts`, `ParticlePool.ts`, `symbolTextures.ts`, `tween.ts` |
+| **`view/`** | How it looks. Pixi only. | `Reel.ts`, `ReelSet.ts`, `WinPresenter.ts`, `ParticlePool.ts`, `MoneyRain.ts`, `Sound.ts`, `symbolTextures.ts`, `tween.ts` |
 | **`ui/`** | DOM HUD and perf overlay. | `hud.ts`, `perfOverlay.ts` |
 | **`scripts/`** | Monte Carlo RTP report. | `simulate.ts` |
 | **`tests/`** | Math, server and state machine tests. | `engine.test.ts`, `server.test.ts`, `stateMachine.test.ts` |
@@ -160,8 +160,9 @@ one place.
 
 - **Real assets and spine animations.** They would not change the
   architecture, and time was better spent elsewhere.
-- **Sound.** A production game needs it, and this is the first thing I would
-  add, using an audio sprite with the Web Audio API.
+- **Real sound design.** Win sounds are synthesized with the Web Audio API
+  (`view/Sound.ts`). A production game would use a mixed audio sprite, and
+  add spin, reel stop and ambient sounds.
 - **A real backend.** `MockServer` already has the shape of one: async
   calls, errors, latency and idempotency. The contract lives in
   `server/protocol.ts`, so swapping it out means a new `GameApi`

@@ -2,10 +2,15 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { PresentOptions, PresenterPort } from '../game/ports';
 import { PAYLINES, SCATTER_MIN_COUNT } from '../math/config';
 import { isBigWin, type Position, type SpinOutcome } from '../math/engine';
+import type { MoneyRain } from './MoneyRain';
 import type { ParticlePool } from './ParticlePool';
 import { BOARD_HEIGHT, BOARD_WIDTH, type ReelSet } from './ReelSet';
+import type { Sound } from './Sound';
 import { DISPLAY_FONT } from './textStyle';
 import { ease, type TweenHandle, type Tweens } from './tween';
+
+/** Money rain size: a base, plus more per bet won, up to a cap. */
+const RAIN = { base: 12, perBet: 4, bigMin: 100, max: 150 };
 
 const LINE_COLORS = [0xffd23a, 0x3ad6ff, 0xff4fa3, 0x7fffd0, 0xffa53a, 0xc59bff, 0x7fb3ff, 0xff7b7b, 0xb4ff7f, 0xffffff];
 
@@ -19,6 +24,8 @@ export class WinPresenter implements PresenterPort {
     private readonly reels: ReelSet,
     private readonly particles: ParticlePool,
     private readonly tweens: Tweens,
+    private readonly rain: MoneyRain,
+    private readonly sound: Sound,
   ) {
     this.banner = new Text({
       text: 'BIG WIN',
@@ -54,6 +61,13 @@ export class WinPresenter implements PresenterPort {
     }
 
     const duration = options.turbo ? 700 : big ? 2600 : 1400;
+    this.sound.playWin(big, duration);
+    if (outcome.totalWin > 0 && !options.reducedMotion) {
+      const bets = outcome.totalWin / options.bet;
+      const count = Math.min(RAIN.max, Math.round(RAIN.base + bets * RAIN.perBet));
+      this.rain.start(big ? Math.max(RAIN.bigMin, count) : count, duration * 0.8);
+    }
+
     const counter = this.tweens.add({
       duration: duration * 0.8,
       ease: ease.outCubic,
@@ -66,12 +80,18 @@ export class WinPresenter implements PresenterPort {
     this.handles.push(hold);
     await hold.done;
 
-    this.skip();
+    this.finishAll();
     this.lines.clear();
   }
 
-  /** Jumps every running animation to its end. */
+  /** Jumps every running animation to its end and cuts the win sound. */
   skip(): void {
+    this.finishAll();
+    this.rain.stop();
+    this.sound.stop();
+  }
+
+  private finishAll(): void {
     const handles = this.handles;
     this.handles = [];
     for (const handle of handles) handle.finish();

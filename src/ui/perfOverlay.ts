@@ -2,6 +2,7 @@ import type { Application } from 'pixi.js';
 
 export interface PerfSource {
   particles: () => { live: number; free: number };
+  rain: () => { live: number; free: number };
   tweens: () => number;
 }
 
@@ -35,6 +36,7 @@ export function mountPerfOverlay(app: Application, source: PerfSource, visible: 
       `renderer   ${renderer.name}`,
       `resolution ${renderer.resolution}`,
       `particles  ${live} live / ${free} pooled`,
+      `rain       ${source.rain().live} live / ${source.rain().free} pooled`,
       `tweens     ${source.tweens()}`,
     ].join('\n');
     worst = 0;

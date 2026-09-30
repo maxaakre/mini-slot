@@ -107,3 +107,33 @@ export function createParticleTexture(renderer: Renderer): Texture {
   g.destroy();
   return texture;
 }
+
+/** A gold coin and a green bill for the money rain. */
+export function createMoneyTextures(renderer: Renderer): { coin: Texture; bill: Texture } {
+  const coin = new Graphics()
+    .circle(22, 22, 20)
+    .fill(0xffc93a)
+    .stroke({ width: 3, color: 0xb07a10 })
+    .circle(22, 22, 13)
+    .stroke({ width: 2, color: 0xe0a020 })
+    .circle(16, 15, 5)
+    .fill({ color: 0xffffff, alpha: 0.5 });
+
+  const bill = new Graphics()
+    .roundRect(0, 0, 64, 32, 4)
+    .fill(0x3fae5a)
+    .stroke({ width: 2, color: 0x1f6b33 })
+    .roundRect(5, 5, 54, 22, 3)
+    .stroke({ width: 1.5, color: 0xbff0c8, alpha: 0.7 })
+    .circle(32, 16, 8)
+    .fill(0x2a8a44)
+    .stroke({ width: 1.5, color: 0xbff0c8 });
+
+  const textures = {
+    coin: renderer.generateTexture({ target: coin, resolution: 2, antialias: true }),
+    bill: renderer.generateTexture({ target: bill, resolution: 2, antialias: true }),
+  };
+  coin.destroy();
+  bill.destroy();
+  return textures;
+}

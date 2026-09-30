@@ -11,6 +11,7 @@ export interface HudCallbacks {
   onBetChange: (direction: -1 | 1) => void;
   onTurboChange: (on: boolean) => void;
   onBuyBonus: () => void;
+  onSoundChange: (on: boolean) => void;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -27,19 +28,22 @@ export class Hud implements HudPort {
   private readonly betDown = el<HTMLButtonElement>('bet-down');
   private readonly betUp = el<HTMLButtonElement>('bet-up');
   private readonly turbo = el<HTMLInputElement>('turbo');
+  private readonly sound = el<HTMLInputElement>('sound');
   private readonly buy = el<HTMLButtonElement>('buy');
   private readonly message = el('message');
   private readonly session = el('session');
   private readonly announcer = el('announcer');
   private messageTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(callbacks: HudCallbacks, turboOn: boolean) {
+  constructor(callbacks: HudCallbacks, turboOn: boolean, soundOn: boolean) {
     this.spin.addEventListener('click', callbacks.onSpin);
     this.betDown.addEventListener('click', () => callbacks.onBetChange(-1));
     this.betUp.addEventListener('click', () => callbacks.onBetChange(1));
     this.buy.addEventListener('click', callbacks.onBuyBonus);
     this.turbo.checked = turboOn;
     this.turbo.addEventListener('change', () => callbacks.onTurboChange(this.turbo.checked));
+    this.sound.checked = soundOn;
+    this.sound.addEventListener('change', () => callbacks.onSoundChange(this.sound.checked));
 
     // Space always means spin / stop, like every slot. It must never click
     // whatever button has focus (e.g. Buy bonus after a mouse click).

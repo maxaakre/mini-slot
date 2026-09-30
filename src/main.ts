@@ -5,9 +5,11 @@ import { gridFromStops } from './math/engine';
 import { MockServer } from './server/mockServer';
 import { Hud } from './ui/hud';
 import { mountPerfOverlay } from './ui/perfOverlay';
+import { MoneyRain } from './view/MoneyRain';
 import { ParticlePool } from './view/ParticlePool';
 import { BOARD_HEIGHT, BOARD_WIDTH, ReelSet } from './view/ReelSet';
-import { createParticleTexture, createSymbolTextures } from './view/symbolTextures';
+import { Sound } from './view/Sound';
+import { createMoneyTextures, createParticleTexture, createSymbolTextures } from './view/symbolTextures';
 import { Tweens } from './view/tween';
 import { WinPresenter } from './view/WinPresenter';
 import './styles.css';
@@ -37,6 +39,25 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MAX_DELTA_MS = 50;
 const BOARD_PADDING = 48;
 
+const SOUND_KEY = 'aurora-reels:sound-off';
+
+/** Storage can throw (private mode, blocked site data); sound then defaults to on. */
+function readSoundOff(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveSoundOff(off: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, off ? '1' : '0');
+  } catch {
+    // Not remembered, but the toggle still works for this visit.
+  }
+}
+
 async function start(): Promise<void> {
   const stage = document.getElementById('stage')!;
 
@@ -63,17 +84,21 @@ async function start(): Promise<void> {
   const initialGrid = gridFromStops([0, 5, 10, 15, 20], BASE_STRIPS);
   const reels = new ReelSet(textures, tweens, BASE_STRIPS, initialGrid);
   const particles = new ParticlePool(createParticleTexture(app.renderer));
-  const presenter = new WinPresenter(reels, particles, tweens);
+  const rain = new MoneyRain(createMoneyTextures(app.renderer));
+  const sound = new Sound(readSoundOff());
+  const presenter = new WinPresenter(reels, particles, tweens, rain, sound);
 
   const board = new Container();
   board.addChild(reels.view, presenter.view, particles.view);
-  app.stage.addChild(board);
+  // Rain covers the whole screen, in front of the board.
+  app.stage.addChild(board, rain.view);
 
   const layout = () => {
     const { width, height } = app.screen;
     const scale = Math.min(width / (BOARD_WIDTH + BOARD_PADDING * 2), height / (BOARD_HEIGHT + BOARD_PADDING * 2));
     board.scale.set(scale);
     board.position.set((width - BOARD_WIDTH * scale) / 2, (height - BOARD_HEIGHT * scale) / 2);
+    rain.resize(width, height, scale);
   };
   app.renderer.on('resize', layout);
   layout();
@@ -83,6 +108,7 @@ async function start(): Promise<void> {
     tweens.update(dt);
     reels.update(dt);
     particles.update(dt);
+    rain.update(dt);
   });
 
   const turbo = reducedMotion;
@@ -93,8 +119,13 @@ async function start(): Promise<void> {
       onBetChange: (direction) => controller.changeBet(direction),
       onTurboChange: (on) => controller.setTurbo(on),
       onBuyBonus: () => void controller.buyBonus(),
+      onSoundChange: (on) => {
+        sound.setMuted(!on);
+        saveSoundOff(!on);
+      },
     },
     turbo,
+    !readSoundOff(),
   );
 
   controller = new GameController({
@@ -111,7 +142,7 @@ async function start(): Promise<void> {
 
   mountPerfOverlay(
     app,
-    { particles: () => particles.stats, tweens: () => tweens.count },
+    { particles: () => particles.stats, rain: () => rain.stats, tweens: () => tweens.count },
     params.has('perf'),
   );
 
